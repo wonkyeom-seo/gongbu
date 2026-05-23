@@ -55,6 +55,12 @@ class StudySessionRepository(context: Context) {
         session
     }
 
+    fun clearAll() = synchronized(lock) {
+        if (file.exists()) {
+            file.delete()
+        }
+    }
+
     private fun writeSessions(sessions: List<StudySession>) {
         val array = JSONArray()
         sessions.forEach { session ->

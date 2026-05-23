@@ -6,6 +6,7 @@ import android.app.DatePickerDialog
 import android.content.Context
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -33,10 +34,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -118,10 +119,18 @@ private fun StudyApp() {
     var fullScreenClock by rememberSaveable { mutableStateOf(false) }
     var timerSnapshot by remember { mutableStateOf(TimerStateStore.snapshot(context)) }
     var sessions by remember { mutableStateOf(repository.readSessions()) }
+    var nowElapsedMillis by remember { mutableStateOf(SystemClock.elapsedRealtime()) }
 
     LaunchedEffect(Unit) {
         while (true) {
+            nowElapsedMillis = SystemClock.elapsedRealtime()
             timerSnapshot = TimerStateStore.snapshot(context)
+            delay(250)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        while (true) {
             sessions = repository.readSessions()
             delay(1000)
         }
@@ -133,6 +142,7 @@ private fun StudyApp() {
         BackHandler { fullScreenClock = false }
         FullScreenClock(
             snapshot = timerSnapshot,
+            nowElapsedMillis = nowElapsedMillis,
             onExit = { fullScreenClock = false }
         )
         return
@@ -150,16 +160,9 @@ private fun StudyApp() {
                 .padding(innerPadding)
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .padding(horizontal = 18.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
+                .padding(horizontal = 18.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(
-                text = "순공",
-                color = Color.White,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-
             ModeTabs(
                 selectedTab = selectedTab,
                 onTabSelected = { selectedTab = it }
@@ -172,13 +175,18 @@ private fun StudyApp() {
                     subject = subject,
                     onSubjectChange = { subject = it },
                     snapshot = timerSnapshot,
+                    nowElapsedMillis = nowElapsedMillis,
                     onFullScreen = { fullScreenClock = true }
                 )
 
                 else -> ViewerScreen(
                     date = viewerDate,
                     onDateChange = { viewerDate = it },
-                    sessions = sessions
+                    sessions = sessions,
+                    onClearAll = {
+                        repository.clearAll()
+                        sessions = repository.readSessions()
+                    }
                 )
             }
         }
@@ -218,12 +226,13 @@ private fun TimerScreen(
     subject: String,
     onSubjectChange: (String) -> Unit,
     snapshot: TimerSnapshot,
+    nowElapsedMillis: Long,
     onFullScreen: () -> Unit
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     val active = snapshot.active
-    val elapsed = snapshot.elapsedMillis()
+    val elapsed = snapshot.elapsedMillis(nowElapsedMillis)
     val shownDate = if (active) snapshot.date else date
     val shownSubject = if (active) snapshot.subject else subject
 
@@ -231,17 +240,20 @@ private fun TimerScreen(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.End
         ) {
-            TextButton(
+            OutlinedButton(
                 onClick = onFullScreen,
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                modifier = Modifier.height(36.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                colors = outlineButtonColors(),
+                shape = RoundedCornerShape(8.dp)
             ) {
-                Text("전체화면", color = Color.White, fontSize = 13.sp)
+                Text("시계만 보기", color = Color.White, fontSize = 13.sp)
             }
         }
 
@@ -267,7 +279,7 @@ private fun TimerScreen(
             colors = darkTextFieldColors()
         )
 
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(0.dp))
 
         Text(
             modifier = Modifier.fillMaxWidth(),
@@ -296,7 +308,9 @@ private fun TimerScreen(
         ) {
             if (!active) {
                 Button(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(52.dp),
                     enabled = subject.trim().isNotBlank(),
                     onClick = {
                         focusManager.clearFocus()
@@ -308,11 +322,13 @@ private fun TimerScreen(
                     colors = primaryButtonColors(),
                     shape = RoundedCornerShape(8.dp)
                 ) {
-                    Text("시작")
+                    Text("시작", fontWeight = FontWeight.SemiBold)
                 }
             } else {
                 Button(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(52.dp),
                     onClick = {
                         val action = if (snapshot.running) {
                             StudyTimerService.ACTION_PAUSE
@@ -327,11 +343,13 @@ private fun TimerScreen(
                     colors = secondaryButtonColors(),
                     shape = RoundedCornerShape(8.dp)
                 ) {
-                    Text(if (snapshot.running) "멈춤" else "계속")
+                    Text(if (snapshot.running) "멈춤" else "계속", fontWeight = FontWeight.SemiBold)
                 }
 
                 Button(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(52.dp),
                     onClick = {
                         ContextCompat.startForegroundService(
                             context,
@@ -341,7 +359,7 @@ private fun TimerScreen(
                     colors = primaryButtonColors(),
                     shape = RoundedCornerShape(8.dp)
                 ) {
-                    Text("저장")
+                    Text("저장", fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -352,8 +370,10 @@ private fun TimerScreen(
 private fun ViewerScreen(
     date: String,
     onDateChange: (String) -> Unit,
-    sessions: List<StudySession>
+    sessions: List<StudySession>,
+    onClearAll: () -> Unit
 ) {
+    var showClearDialog by rememberSaveable { mutableStateOf(false) }
     val dailySessions = sessions.filter { it.date == date }
     val totalMillis = dailySessions.sumOf { it.durationMillis }
     val subjectTotals = dailySessions
@@ -366,7 +386,7 @@ private fun ViewerScreen(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         DateSelector(
             label = "조회 날짜",
@@ -415,6 +435,46 @@ private fun ViewerScreen(
                 }
             }
         }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Button(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp),
+            enabled = sessions.isNotEmpty(),
+            onClick = { showClearDialog = true },
+            colors = dangerButtonColors(),
+            shape = RoundedCornerShape(8.dp)
+        ) {
+            Text("전체 기록 초기화", fontWeight = FontWeight.SemiBold)
+        }
+    }
+
+    if (showClearDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearDialog = false },
+            containerColor = Color(0xFF101010),
+            titleContentColor = Color.White,
+            textContentColor = Color(0xFFDDDDDD),
+            title = { Text("전체 기록 초기화") },
+            text = { Text("저장된 모든 공부 기록을 삭제합니다.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onClearAll()
+                        showClearDialog = false
+                    }
+                ) {
+                    Text("초기화", color = Color(0xFFFF6B6B), fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearDialog = false }) {
+                    Text("취소", color = Color.White)
+                }
+            }
+        )
     }
 }
 
@@ -499,8 +559,12 @@ private fun DateSelector(
 }
 
 @Composable
-private fun FullScreenClock(snapshot: TimerSnapshot, onExit: () -> Unit) {
-    val elapsed = snapshot.elapsedMillis()
+private fun FullScreenClock(
+    snapshot: TimerSnapshot,
+    nowElapsedMillis: Long,
+    onExit: () -> Unit
+) {
+    val elapsed = snapshot.elapsedMillis(nowElapsedMillis)
     val offsetStep = ((elapsed / 30000L) % 5L).toInt()
     val offsets = listOf(
         IntOffset(0, 0),
@@ -575,8 +639,16 @@ private fun primaryButtonColors() = ButtonDefaults.buttonColors(
 
 @Composable
 private fun secondaryButtonColors() = ButtonDefaults.buttonColors(
-    containerColor = Color(0xFF202020),
+    containerColor = Color(0xFF303030),
     contentColor = Color.White
+)
+
+@Composable
+private fun dangerButtonColors() = ButtonDefaults.buttonColors(
+    containerColor = Color(0xFF401818),
+    contentColor = Color.White,
+    disabledContainerColor = Color(0xFF181818),
+    disabledContentColor = Color(0xFF555555)
 )
 
 @Composable

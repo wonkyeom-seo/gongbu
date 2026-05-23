@@ -8,11 +8,26 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import androidx.core.app.NotificationCompat
 
 class StudyTimerService : Service() {
     private val repository by lazy { StudySessionRepository(this) }
+    private val handler = Handler(Looper.getMainLooper())
+    private val notificationManager by lazy { getSystemService(NotificationManager::class.java) }
+    private val notificationUpdater = object : Runnable {
+        override fun run() {
+            val snapshot = TimerStateStore.snapshot(this@StudyTimerService)
+            if (!snapshot.active) return
+
+            notificationManager.notify(NOTIFICATION_ID, buildNotification(snapshot))
+            if (snapshot.running) {
+                handler.postDelayed(this, 1000L)
+            }
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -45,6 +60,7 @@ class StudyTimerService : Service() {
         val snapshot = TimerStateStore.snapshot(this)
         return if (snapshot.active) {
             startForeground(NOTIFICATION_ID, buildNotification(snapshot))
+            scheduleNotificationUpdates(snapshot)
             START_STICKY
         } else {
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -63,8 +79,14 @@ class StudyTimerService : Service() {
             )
         }
         TimerStateStore.clear(this)
+        handler.removeCallbacks(notificationUpdater)
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
+    }
+
+    override fun onDestroy() {
+        handler.removeCallbacks(notificationUpdater)
+        super.onDestroy()
     }
 
     private fun buildNotification(snapshot: TimerSnapshot): Notification {
@@ -123,8 +145,15 @@ class StudyTimerService : Service() {
             setShowBadge(false)
         }
 
-        val manager = getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(channel)
+        notificationManager.createNotificationChannel(channel)
+    }
+
+    private fun scheduleNotificationUpdates(snapshot: TimerSnapshot) {
+        handler.removeCallbacks(notificationUpdater)
+        notificationManager.notify(NOTIFICATION_ID, buildNotification(snapshot))
+        if (snapshot.running) {
+            handler.postDelayed(notificationUpdater, 1000L)
+        }
     }
 
     companion object {
