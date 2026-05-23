@@ -64,6 +64,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -120,6 +121,9 @@ private fun StudyApp() {
     var timerSnapshot by remember { mutableStateOf(TimerStateStore.snapshot(context)) }
     var sessions by remember { mutableStateOf(repository.readSessions()) }
     var nowElapsedMillis by remember { mutableStateOf(SystemClock.elapsedRealtime()) }
+    var themeSettings by remember { mutableStateOf(ThemeSettingsStore.read(context)) }
+    var showSettings by rememberSaveable { mutableStateOf(false) }
+    val colors = themeSettings.toAppColors()
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -143,6 +147,7 @@ private fun StudyApp() {
         FullScreenClock(
             snapshot = timerSnapshot,
             nowElapsedMillis = nowElapsedMillis,
+            colors = colors,
             onExit = { fullScreenClock = false }
         )
         return
@@ -151,8 +156,8 @@ private fun StudyApp() {
     Scaffold(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black),
-        containerColor = Color.Black
+            .background(colors.background),
+        containerColor = colors.background
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -163,44 +168,84 @@ private fun StudyApp() {
                 .padding(horizontal = 18.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            ModeTabs(
-                selectedTab = selectedTab,
-                onTabSelected = { selectedTab = it }
-            )
-
-            when (selectedTab) {
-                0 -> TimerScreen(
-                    date = timerDate,
-                    onDateChange = { timerDate = it },
-                    subject = subject,
-                    onSubjectChange = { subject = it },
-                    snapshot = timerSnapshot,
-                    nowElapsedMillis = nowElapsedMillis,
-                    onFullScreen = { fullScreenClock = true }
-                )
-
-                else -> ViewerScreen(
-                    date = viewerDate,
-                    onDateChange = { viewerDate = it },
-                    sessions = sessions,
-                    onClearAll = {
-                        repository.clearAll()
-                        sessions = repository.readSessions()
+            if (showSettings) {
+                SettingsScreen(
+                    settings = themeSettings,
+                    colors = colors,
+                    onBack = { showSettings = false },
+                    onPresetSelected = { preset ->
+                        themeSettings = ThemeSettingsStore.savePreset(context, preset)
+                    },
+                    onCustomApply = { backgroundArgb, textArgb ->
+                        themeSettings = ThemeSettingsStore.saveCustom(context, backgroundArgb, textArgb)
                     }
                 )
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    ModeTabs(
+                        modifier = Modifier.weight(1f),
+                        selectedTab = selectedTab,
+                        colors = colors,
+                        onTabSelected = { selectedTab = it }
+                    )
+
+                    OutlinedButton(
+                        modifier = Modifier.height(40.dp),
+                        onClick = { showSettings = true },
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                        colors = outlineButtonColors(colors),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("설정", color = colors.text, fontSize = 13.sp)
+                    }
+                }
+
+                when (selectedTab) {
+                    0 -> TimerScreen(
+                        date = timerDate,
+                        onDateChange = { timerDate = it },
+                        subject = subject,
+                        onSubjectChange = { subject = it },
+                        snapshot = timerSnapshot,
+                        nowElapsedMillis = nowElapsedMillis,
+                        colors = colors,
+                        onFullScreen = { fullScreenClock = true }
+                    )
+
+                    else -> ViewerScreen(
+                        date = viewerDate,
+                        onDateChange = { viewerDate = it },
+                        sessions = sessions,
+                        colors = colors,
+                        onClearAll = {
+                            repository.clearAll()
+                            sessions = repository.readSessions()
+                        }
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun ModeTabs(selectedTab: Int, onTabSelected: (Int) -> Unit) {
+private fun ModeTabs(
+    modifier: Modifier = Modifier,
+    selectedTab: Int,
+    colors: AppColors,
+    onTabSelected: (Int) -> Unit
+) {
     TabRow(
+        modifier = modifier,
         selectedTabIndex = selectedTab,
-        containerColor = Color.Black,
-        contentColor = Color.White,
+        containerColor = colors.background,
+        contentColor = colors.text,
         divider = {
-            HorizontalDivider(color = Color(0xFF202020))
+            HorizontalDivider(color = colors.outline)
         }
     ) {
         listOf("측정", "뷰어").forEachIndexed { index, title ->
@@ -210,7 +255,7 @@ private fun ModeTabs(selectedTab: Int, onTabSelected: (Int) -> Unit) {
                 text = {
                     Text(
                         text = title,
-                        color = if (selectedTab == index) Color.White else Color(0xFF8E8E8E),
+                        color = if (selectedTab == index) colors.text else colors.mutedText,
                         fontWeight = if (selectedTab == index) FontWeight.SemiBold else FontWeight.Normal
                     )
                 }
@@ -227,6 +272,7 @@ private fun TimerScreen(
     onSubjectChange: (String) -> Unit,
     snapshot: TimerSnapshot,
     nowElapsedMillis: Long,
+    colors: AppColors,
     onFullScreen: () -> Unit
 ) {
     val context = LocalContext.current
@@ -250,10 +296,10 @@ private fun TimerScreen(
                 onClick = onFullScreen,
                 modifier = Modifier.height(36.dp),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-                colors = outlineButtonColors(),
+                colors = outlineButtonColors(colors),
                 shape = RoundedCornerShape(8.dp)
             ) {
-                Text("시계만 보기", color = Color.White, fontSize = 13.sp)
+                Text("시계만 보기", color = colors.text, fontSize = 13.sp)
             }
         }
 
@@ -261,6 +307,7 @@ private fun TimerScreen(
             label = "날짜",
             date = shownDate,
             enabled = !active,
+            colors = colors,
             onDateChange = onDateChange
         )
 
@@ -276,7 +323,7 @@ private fun TimerScreen(
                 onNext = { focusManager.moveFocus(FocusDirection.Down) },
                 onDone = { focusManager.clearFocus() }
             ),
-            colors = darkTextFieldColors()
+            colors = darkTextFieldColors(colors)
         )
 
         Spacer(modifier = Modifier.height(0.dp))
@@ -284,7 +331,7 @@ private fun TimerScreen(
         Text(
             modifier = Modifier.fillMaxWidth(),
             text = formatDuration(elapsed),
-            color = Color.White,
+            color = colors.text,
             fontSize = 54.sp,
             fontWeight = FontWeight.Light,
             textAlign = TextAlign.Center
@@ -297,7 +344,7 @@ private fun TimerScreen(
             } else {
                 "시작하면 백그라운드 알림에서도 제어됩니다"
             },
-            color = Color(0xFFB5B5B5),
+            color = colors.mutedText,
             fontSize = 14.sp,
             textAlign = TextAlign.Center
         )
@@ -319,7 +366,7 @@ private fun TimerScreen(
                             StudyTimerService.startIntent(context, date, subject)
                         )
                     },
-                    colors = primaryButtonColors(),
+                    colors = primaryButtonColors(colors),
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Text("시작", fontWeight = FontWeight.SemiBold)
@@ -340,7 +387,7 @@ private fun TimerScreen(
                             StudyTimerService.actionIntent(context, action)
                         )
                     },
-                    colors = secondaryButtonColors(),
+                    colors = secondaryButtonColors(colors),
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Text(if (snapshot.running) "멈춤" else "계속", fontWeight = FontWeight.SemiBold)
@@ -356,7 +403,7 @@ private fun TimerScreen(
                             StudyTimerService.actionIntent(context, StudyTimerService.ACTION_SAVE)
                         )
                     },
-                    colors = primaryButtonColors(),
+                    colors = primaryButtonColors(colors),
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Text("저장", fontWeight = FontWeight.SemiBold)
@@ -371,6 +418,7 @@ private fun ViewerScreen(
     date: String,
     onDateChange: (String) -> Unit,
     sessions: List<StudySession>,
+    colors: AppColors,
     onClearAll: () -> Unit
 ) {
     var showClearDialog by rememberSaveable { mutableStateOf(false) }
@@ -392,22 +440,23 @@ private fun ViewerScreen(
             label = "조회 날짜",
             date = date,
             enabled = true,
+            colors = colors,
             onDateChange = onDateChange
         )
 
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            color = Color(0xFF101010),
+            color = colors.surface,
             shape = RoundedCornerShape(8.dp)
         ) {
             Column(
                 modifier = Modifier.padding(18.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("전체 공부시간", color = Color(0xFFB5B5B5), fontSize = 14.sp)
+                Text("전체 공부시간", color = colors.mutedText, fontSize = 14.sp)
                 Text(
                     text = formatDuration(totalMillis),
-                    color = Color.White,
+                    color = colors.text,
                     fontSize = 42.sp,
                     fontWeight = FontWeight.Light
                 )
@@ -416,7 +465,7 @@ private fun ViewerScreen(
 
         Text(
             text = "과목별 공부시간",
-            color = Color.White,
+            color = colors.text,
             fontSize = 18.sp,
             fontWeight = FontWeight.SemiBold
         )
@@ -425,13 +474,13 @@ private fun ViewerScreen(
             Text(
                 modifier = Modifier.fillMaxWidth(),
                 text = "기록 없음",
-                color = Color(0xFF8E8E8E),
+                color = colors.mutedText,
                 textAlign = TextAlign.Center
             )
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 subjectTotals.forEach { (subject, durationMillis) ->
-                    SubjectRow(subject = subject, durationMillis = durationMillis)
+                    SubjectRow(subject = subject, durationMillis = durationMillis, colors = colors)
                 }
             }
         }
@@ -444,7 +493,7 @@ private fun ViewerScreen(
                 .height(50.dp),
             enabled = sessions.isNotEmpty(),
             onClick = { showClearDialog = true },
-            colors = dangerButtonColors(),
+            colors = dangerButtonColors(colors),
             shape = RoundedCornerShape(8.dp)
         ) {
             Text("전체 기록 초기화", fontWeight = FontWeight.SemiBold)
@@ -454,9 +503,9 @@ private fun ViewerScreen(
     if (showClearDialog) {
         AlertDialog(
             onDismissRequest = { showClearDialog = false },
-            containerColor = Color(0xFF101010),
-            titleContentColor = Color.White,
-            textContentColor = Color(0xFFDDDDDD),
+            containerColor = colors.surface,
+            titleContentColor = colors.text,
+            textContentColor = colors.mutedText,
             title = { Text("전체 기록 초기화") },
             text = { Text("저장된 모든 공부 기록을 삭제합니다.") },
             confirmButton = {
@@ -466,12 +515,12 @@ private fun ViewerScreen(
                         showClearDialog = false
                     }
                 ) {
-                    Text("초기화", color = Color(0xFFFF6B6B), fontWeight = FontWeight.SemiBold)
+                    Text("초기화", color = colors.dangerText, fontWeight = FontWeight.SemiBold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showClearDialog = false }) {
-                    Text("취소", color = Color.White)
+                    Text("취소", color = colors.text)
                 }
             }
         )
@@ -479,10 +528,198 @@ private fun ViewerScreen(
 }
 
 @Composable
-private fun SubjectRow(subject: String, durationMillis: Long) {
+private fun SettingsScreen(
+    settings: ThemeSettings,
+    colors: AppColors,
+    onBack: () -> Unit,
+    onPresetSelected: (ThemePreset) -> Unit,
+    onCustomApply: (Int, Int) -> Unit
+) {
+    var backgroundHex by rememberSaveable(settings.backgroundArgb) {
+        mutableStateOf(ThemeSettingsStore.toHexColor(settings.backgroundArgb))
+    }
+    var textHex by rememberSaveable(settings.textArgb) {
+        mutableStateOf(ThemeSettingsStore.toHexColor(settings.textArgb))
+    }
+    var errorText by rememberSaveable { mutableStateOf("") }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "색상 설정",
+                color = colors.text,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            OutlinedButton(
+                modifier = Modifier.height(38.dp),
+                onClick = onBack,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                colors = outlineButtonColors(colors),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("닫기", color = colors.text, fontSize = 13.sp)
+            }
+        }
+
+        Text("프리셋", color = colors.mutedText, fontSize = 13.sp)
+
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            ThemeSettingsStore.presets.forEach { preset ->
+                PresetButton(
+                    preset = preset,
+                    selected = settings.presetId == preset.id,
+                    colors = colors,
+                    onClick = {
+                        errorText = ""
+                        onPresetSelected(preset)
+                    }
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Text("커스텀", color = colors.mutedText, fontSize = 13.sp)
+
+        OutlinedTextField(
+            modifier = Modifier.fillMaxWidth(),
+            value = backgroundHex,
+            onValueChange = { backgroundHex = it },
+            singleLine = true,
+            label = { Text("배경색 HEX") },
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Ascii,
+                imeAction = ImeAction.Next
+            ),
+            colors = darkTextFieldColors(colors)
+        )
+
+        OutlinedTextField(
+            modifier = Modifier.fillMaxWidth(),
+            value = textHex,
+            onValueChange = { textHex = it },
+            singleLine = true,
+            label = { Text("글씨색 HEX") },
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Ascii,
+                imeAction = ImeAction.Done
+            ),
+            colors = darkTextFieldColors(colors)
+        )
+
+        if (errorText.isNotBlank()) {
+            Text(errorText, color = colors.dangerText, fontSize = 13.sp)
+        }
+
+        Button(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp),
+            onClick = {
+                val background = ThemeSettingsStore.parseHexColor(backgroundHex)
+                val text = ThemeSettingsStore.parseHexColor(textHex)
+                if (background == null || text == null) {
+                    errorText = "#000000 형식으로 입력하세요"
+                } else {
+                    errorText = ""
+                    onCustomApply(background, text)
+                }
+            },
+            colors = primaryButtonColors(colors),
+            shape = RoundedCornerShape(8.dp)
+        ) {
+            Text("커스텀 적용", fontWeight = FontWeight.SemiBold)
+        }
+
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = colors.surface,
+            shape = RoundedCornerShape(8.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text("미리보기", color = colors.mutedText, fontSize = 13.sp)
+                Text("00:25:10", color = colors.text, fontSize = 34.sp, fontWeight = FontWeight.Light)
+                Text("측정 중 · 국어", color = colors.mutedText, fontSize = 14.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PresetButton(
+    preset: ThemePreset,
+    selected: Boolean,
+    colors: AppColors,
+    onClick: () -> Unit
+) {
+    OutlinedButton(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp),
+        onClick = onClick,
+        colors = outlineButtonColors(colors),
+        shape = RoundedCornerShape(8.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                ColorSwatch(backgroundArgb = preset.backgroundArgb, textArgb = preset.textArgb)
+                Text(
+                    text = preset.label,
+                    color = colors.text,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                )
+            }
+            Text(
+                text = if (selected) "적용중" else "적용",
+                color = if (selected) colors.text else colors.mutedText,
+                fontSize = 13.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun ColorSwatch(backgroundArgb: Int, textArgb: Int) {
+    Box(
+        modifier = Modifier
+            .size(24.dp)
+            .background(Color(backgroundArgb), RoundedCornerShape(6.dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(10.dp)
+                .background(Color(textArgb), RoundedCornerShape(3.dp))
+        )
+    }
+}
+
+@Composable
+private fun SubjectRow(subject: String, durationMillis: Long, colors: AppColors) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = Color(0xFF101010),
+        color = colors.surface,
         shape = RoundedCornerShape(8.dp)
     ) {
         Row(
@@ -493,14 +730,14 @@ private fun SubjectRow(subject: String, durationMillis: Long) {
             Text(
                 modifier = Modifier.weight(1f),
                 text = subject,
-                color = Color.White,
+                color = colors.text,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Medium
             )
             Spacer(modifier = Modifier.width(12.dp))
             Text(
                 text = formatDuration(durationMillis),
-                color = Color(0xFFDDDDDD),
+                color = colors.mutedText,
                 fontSize = 16.sp,
                 textAlign = TextAlign.End
             )
@@ -513,11 +750,12 @@ private fun DateSelector(
     label: String,
     date: String,
     enabled: Boolean,
+    colors: AppColors,
     onDateChange: (String) -> Unit
 ) {
     val context = LocalContext.current
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(label, color = Color(0xFFB5B5B5), fontSize = 13.sp)
+        Text(label, color = colors.mutedText, fontSize = 13.sp)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -528,7 +766,7 @@ private fun DateSelector(
                 enabled = enabled,
                 onClick = { onDateChange(TimerStateStore.shiftDate(date, -1)) },
                 contentPadding = PaddingValues(0.dp),
-                colors = outlineButtonColors(),
+                colors = outlineButtonColors(colors),
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Text("<")
@@ -539,7 +777,7 @@ private fun DateSelector(
                     .height(44.dp),
                 enabled = enabled,
                 onClick = { showDatePickerDialog(context, date, onDateChange) },
-                colors = outlineButtonColors(),
+                colors = outlineButtonColors(colors),
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Text(date, textAlign = TextAlign.Center)
@@ -549,7 +787,7 @@ private fun DateSelector(
                 enabled = enabled,
                 onClick = { onDateChange(TimerStateStore.shiftDate(date, 1)) },
                 contentPadding = PaddingValues(0.dp),
-                colors = outlineButtonColors(),
+                colors = outlineButtonColors(colors),
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Text(">")
@@ -562,6 +800,7 @@ private fun DateSelector(
 private fun FullScreenClock(
     snapshot: TimerSnapshot,
     nowElapsedMillis: Long,
+    colors: AppColors,
     onExit: () -> Unit
 ) {
     val elapsed = snapshot.elapsedMillis(nowElapsedMillis)
@@ -577,7 +816,7 @@ private fun FullScreenClock(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(colors.background)
     ) {
         Box(
             modifier = Modifier
@@ -591,7 +830,7 @@ private fun FullScreenClock(
                 .align(Alignment.Center)
                 .offset { offsets[offsetStep] },
             text = formatDuration(elapsed),
-            color = Color.White,
+            color = colors.text,
             fontSize = 64.sp,
             fontWeight = FontWeight.ExtraLight,
             textAlign = TextAlign.Center
@@ -630,48 +869,48 @@ private fun FullScreenSystemUiEffect(enabled: Boolean) {
 }
 
 @Composable
-private fun primaryButtonColors() = ButtonDefaults.buttonColors(
-    containerColor = Color.White,
-    contentColor = Color.Black,
-    disabledContainerColor = Color(0xFF303030),
-    disabledContentColor = Color(0xFF7E7E7E)
+private fun primaryButtonColors(colors: AppColors) = ButtonDefaults.buttonColors(
+    containerColor = colors.primaryButton,
+    contentColor = colors.primaryButtonText,
+    disabledContainerColor = colors.disabledButton,
+    disabledContentColor = colors.disabledText
 )
 
 @Composable
-private fun secondaryButtonColors() = ButtonDefaults.buttonColors(
-    containerColor = Color(0xFF303030),
-    contentColor = Color.White
+private fun secondaryButtonColors(colors: AppColors) = ButtonDefaults.buttonColors(
+    containerColor = colors.secondaryButton,
+    contentColor = colors.text
 )
 
 @Composable
-private fun dangerButtonColors() = ButtonDefaults.buttonColors(
-    containerColor = Color(0xFF401818),
-    contentColor = Color.White,
-    disabledContainerColor = Color(0xFF181818),
-    disabledContentColor = Color(0xFF555555)
+private fun dangerButtonColors(colors: AppColors) = ButtonDefaults.buttonColors(
+    containerColor = colors.dangerButton,
+    contentColor = colors.text,
+    disabledContainerColor = colors.disabledButton,
+    disabledContentColor = colors.disabledText
 )
 
 @Composable
-private fun outlineButtonColors() = ButtonDefaults.outlinedButtonColors(
-    contentColor = Color.White,
-    disabledContentColor = Color(0xFF666666)
+private fun outlineButtonColors(colors: AppColors) = ButtonDefaults.outlinedButtonColors(
+    contentColor = colors.text,
+    disabledContentColor = colors.disabledText
 )
 
 @Composable
-private fun darkTextFieldColors() = TextFieldDefaults.colors(
-    focusedTextColor = Color.White,
-    unfocusedTextColor = Color.White,
-    disabledTextColor = Color(0xFFB5B5B5),
-    focusedContainerColor = Color.Black,
-    unfocusedContainerColor = Color.Black,
-    disabledContainerColor = Color.Black,
-    cursorColor = Color.White,
-    focusedIndicatorColor = Color.White,
-    unfocusedIndicatorColor = Color(0xFF4A4A4A),
-    disabledIndicatorColor = Color(0xFF303030),
-    focusedLabelColor = Color.White,
-    unfocusedLabelColor = Color(0xFF8E8E8E),
-    disabledLabelColor = Color(0xFF666666)
+private fun darkTextFieldColors(colors: AppColors) = TextFieldDefaults.colors(
+    focusedTextColor = colors.text,
+    unfocusedTextColor = colors.text,
+    disabledTextColor = colors.mutedText,
+    focusedContainerColor = colors.background,
+    unfocusedContainerColor = colors.background,
+    disabledContainerColor = colors.background,
+    cursorColor = colors.text,
+    focusedIndicatorColor = colors.text,
+    unfocusedIndicatorColor = colors.outline,
+    disabledIndicatorColor = colors.disabledButton,
+    focusedLabelColor = colors.text,
+    unfocusedLabelColor = colors.mutedText,
+    disabledLabelColor = colors.disabledText
 )
 
 private fun showDatePickerDialog(
