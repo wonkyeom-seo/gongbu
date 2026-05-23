@@ -113,6 +113,10 @@ class StudyTimerService : Service() {
             .addAction(0, toggleLabel, servicePendingIntent(toggleAction, 10))
             .addAction(0, "저장", servicePendingIntent(ACTION_SAVE, 11))
 
+        if (!snapshot.running) {
+            builder.addAction(0, "초기화", servicePendingIntent(ACTION_STOP, 12))
+        }
+
         if (snapshot.running) {
             val baseTime = System.currentTimeMillis() - elapsed
             builder

@@ -408,6 +408,24 @@ private fun TimerScreen(
                 ) {
                     Text("저장", fontWeight = FontWeight.SemiBold)
                 }
+
+                if (!snapshot.running) {
+                    Button(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(52.dp),
+                        onClick = {
+                            ContextCompat.startForegroundService(
+                                context,
+                                StudyTimerService.actionIntent(context, StudyTimerService.ACTION_STOP)
+                            )
+                        },
+                        colors = dangerButtonColors(colors),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("초기화", fontWeight = FontWeight.SemiBold)
+                    }
+                }
             }
         }
     }
