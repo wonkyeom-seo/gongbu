@@ -17,6 +17,7 @@
 
 - Privacy policy draft: [PRIVACY_POLICY.md](PRIVACY_POLICY.md)
 - Foreground service declaration draft: [FOREGROUND_SERVICE_DECLARATION.md](FOREGROUND_SERVICE_DECLARATION.md)
+- Release signing setup: [SIGNING.md](SIGNING.md)
 - Preview assets: [store-assets](store-assets)
 
 ## Release Build
