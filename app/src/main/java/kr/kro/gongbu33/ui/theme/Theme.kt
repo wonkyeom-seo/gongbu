@@ -1,4 +1,4 @@
-package kr.kro.gongbu.ui.theme
+package kr.kro.gongbu33.ui.theme
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -22,7 +22,7 @@ private val DarkColorScheme = darkColorScheme(
 )
 
 @Composable
-fun GongbuTheme(
+fun Gongbu33Theme(
     content: @Composable () -> Unit
 ) {
     MaterialTheme(

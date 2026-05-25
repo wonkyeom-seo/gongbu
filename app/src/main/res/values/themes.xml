@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.Gongbu" parent="android:Theme.Material.NoActionBar">
+    <style name="Theme.Gongbu33" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">#000000</item>
         <item name="android:colorAccent">#FFFFFF</item>
         <item name="android:navigationBarColor">#000000</item>

@@ -1,4 +1,4 @@
-package kr.kro.gongbu
+package kr.kro.gongbu33
 
 import android.Manifest
 import android.app.Activity
@@ -77,7 +77,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import kr.kro.gongbu.ui.theme.GongbuTheme
+import kr.kro.gongbu33.ui.theme.Gongbu33Theme
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -92,7 +92,7 @@ class MainActivity : ComponentActivity() {
         requestNotificationPermission()
 
         setContent {
-            GongbuTheme {
+            Gongbu33Theme {
                 StudyApp()
             }
         }

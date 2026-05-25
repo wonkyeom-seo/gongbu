@@ -1,4 +1,4 @@
-package kr.kro.gongbu
+package kr.kro.gongbu33
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -166,11 +166,11 @@ class StudyTimerService : Service() {
     }
 
     companion object {
-        const val ACTION_START = "kr.kro.gongbu.action.START"
-        const val ACTION_PAUSE = "kr.kro.gongbu.action.PAUSE"
-        const val ACTION_RESUME = "kr.kro.gongbu.action.RESUME"
-        const val ACTION_SAVE = "kr.kro.gongbu.action.SAVE"
-        const val ACTION_STOP = "kr.kro.gongbu.action.STOP"
+        const val ACTION_START = "kr.kro.gongbu33.action.START"
+        const val ACTION_PAUSE = "kr.kro.gongbu33.action.PAUSE"
+        const val ACTION_RESUME = "kr.kro.gongbu33.action.RESUME"
+        const val ACTION_SAVE = "kr.kro.gongbu33.action.SAVE"
+        const val ACTION_STOP = "kr.kro.gongbu33.action.STOP"
         const val EXTRA_DATE = "extra_date"
         const val EXTRA_SUBJECT = "extra_subject"
 

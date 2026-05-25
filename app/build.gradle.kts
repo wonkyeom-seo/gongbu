@@ -4,13 +4,13 @@ plugins {
 }
 
 android {
-    namespace = "kr.kro.gongbu"
+    namespace = "kr.kro.gongbu33"
     compileSdk {
         version = release(36)
     }
 
     defaultConfig {
-        applicationId = "kr.kro.gongbu"
+        applicationId = "kr.kro.gongbu33"
         minSdk = 24
         targetSdk = 36
         versionCode = 1

@@ -1,4 +1,4 @@
-package kr.kro.gongbu.ui.theme
+package kr.kro.gongbu33.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
