@@ -11,6 +11,9 @@ data class StudySession(
     val date: String,
     val subject: String,
     val durationMillis: Long,
+    val startMillis: Long,
+    val endMillis: Long,
+    val breakMillis: Long,
     val savedAtMillis: Long
 )
 
@@ -25,13 +28,24 @@ class StudySessionRepository(context: Context) {
             buildList {
                 for (index in 0 until array.length()) {
                     val item = array.getJSONObject(index)
+                    val durationMillis = item.optLong("durationMillis")
+                    val savedAtMillis = item.optLong("savedAtMillis")
+                    val fallbackEndMillis = savedAtMillis.takeIf { it > 0L } ?: 0L
+                    val endMillis = item.optLong("endMillis", fallbackEndMillis)
+                    val startMillis = item.optLong(
+                        "startMillis",
+                        (endMillis - durationMillis).coerceAtLeast(0L)
+                    )
                     add(
                         StudySession(
                             id = item.optString("id"),
                             date = item.optString("date"),
                             subject = item.optString("subject"),
-                            durationMillis = item.optLong("durationMillis"),
-                            savedAtMillis = item.optLong("savedAtMillis")
+                            durationMillis = durationMillis,
+                            startMillis = startMillis,
+                            endMillis = endMillis,
+                            breakMillis = item.optLong("breakMillis", 0L),
+                            savedAtMillis = savedAtMillis
                         )
                     )
                 }
@@ -39,7 +53,14 @@ class StudySessionRepository(context: Context) {
         }.getOrElse { emptyList() }
     }
 
-    fun addSession(date: String, subject: String, durationMillis: Long): StudySession? = synchronized(lock) {
+    fun addSession(
+        date: String,
+        subject: String,
+        durationMillis: Long,
+        startMillis: Long,
+        endMillis: Long,
+        breakMillis: Long
+    ): StudySession? = synchronized(lock) {
         val trimmedSubject = subject.trim()
         if (date.isBlank() || trimmedSubject.isBlank() || durationMillis <= 0L) return@synchronized null
 
@@ -49,6 +70,9 @@ class StudySessionRepository(context: Context) {
             date = date,
             subject = trimmedSubject,
             durationMillis = durationMillis,
+            startMillis = startMillis,
+            endMillis = endMillis,
+            breakMillis = breakMillis.coerceAtLeast(0L),
             savedAtMillis = System.currentTimeMillis()
         )
         writeSessions(existing + session)
@@ -70,6 +94,9 @@ class StudySessionRepository(context: Context) {
                     .put("date", session.date)
                     .put("subject", session.subject)
                     .put("durationMillis", session.durationMillis)
+                    .put("startMillis", session.startMillis)
+                    .put("endMillis", session.endMillis)
+                    .put("breakMillis", session.breakMillis)
                     .put("savedAtMillis", session.savedAtMillis)
             )
         }

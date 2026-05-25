@@ -51,6 +51,7 @@ class StudyTimerService : Service() {
             ACTION_SAVE -> saveAndStop()
             ACTION_STOP -> {
                 TimerStateStore.clear(this)
+                handler.removeCallbacks(notificationUpdater)
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
                 return START_NOT_STICKY
@@ -72,10 +73,14 @@ class StudyTimerService : Service() {
     private fun saveAndStop() {
         val snapshot = TimerStateStore.snapshot(this)
         if (snapshot.active) {
+            val endMillis = System.currentTimeMillis()
             repository.addSession(
                 date = snapshot.date,
                 subject = snapshot.subject,
-                durationMillis = snapshot.elapsedMillis()
+                durationMillis = snapshot.elapsedMillis(),
+                startMillis = snapshot.startedAtWallMillis,
+                endMillis = endMillis,
+                breakMillis = snapshot.breakMillis(endMillis)
             )
         }
         TimerStateStore.clear(this)

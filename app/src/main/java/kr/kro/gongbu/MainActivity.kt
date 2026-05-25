@@ -14,11 +14,13 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -69,6 +71,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
@@ -76,7 +79,9 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import kr.kro.gongbu.ui.theme.GongbuTheme
 import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
 import java.util.Locale
 
 class MainActivity : ComponentActivity() {
@@ -114,7 +119,6 @@ private fun StudyApp() {
     val context = LocalContext.current
     val repository = remember { StudySessionRepository(context) }
     var selectedTab by rememberSaveable { mutableStateOf(0) }
-    var timerDate by rememberSaveable { mutableStateOf(TimerStateStore.todayString()) }
     var viewerDate by rememberSaveable { mutableStateOf(TimerStateStore.todayString()) }
     var subject by rememberSaveable { mutableStateOf("") }
     var fullScreenClock by rememberSaveable { mutableStateOf(false) }
@@ -206,8 +210,7 @@ private fun StudyApp() {
 
                 when (selectedTab) {
                     0 -> TimerScreen(
-                        date = timerDate,
-                        onDateChange = { timerDate = it },
+                        date = TimerStateStore.todayString(),
                         subject = subject,
                         onSubjectChange = { subject = it },
                         snapshot = timerSnapshot,
@@ -267,7 +270,6 @@ private fun ModeTabs(
 @Composable
 private fun TimerScreen(
     date: String,
-    onDateChange: (String) -> Unit,
     subject: String,
     onSubjectChange: (String) -> Unit,
     snapshot: TimerSnapshot,
@@ -279,6 +281,7 @@ private fun TimerScreen(
     val focusManager = LocalFocusManager.current
     val active = snapshot.active
     val elapsed = snapshot.elapsedMillis(nowElapsedMillis)
+    val breakElapsed = snapshot.breakMillis()
     val shownDate = if (active) snapshot.date else date
     val shownSubject = if (active) snapshot.subject else subject
 
@@ -303,12 +306,9 @@ private fun TimerScreen(
             }
         }
 
-        DateSelector(
-            label = "날짜",
+        ReadOnlyDateCard(
             date = shownDate,
-            enabled = !active,
-            colors = colors,
-            onDateChange = onDateChange
+            colors = colors
         )
 
         OutlinedTextField(
@@ -348,6 +348,16 @@ private fun TimerScreen(
             fontSize = 14.sp,
             textAlign = TextAlign.Center
         )
+
+        if (active) {
+            Text(
+                modifier = Modifier.fillMaxWidth(),
+                text = "쉰 시간 ${formatDuration(breakElapsed)}",
+                color = colors.mutedText,
+                fontSize = 13.sp,
+                textAlign = TextAlign.Center
+            )
+        }
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -462,6 +472,13 @@ private fun ViewerScreen(
             onDateChange = onDateChange
         )
 
+        MonthCalendar(
+            selectedDate = date,
+            sessions = sessions,
+            colors = colors,
+            onDateSelected = onDateChange
+        )
+
         Surface(
             modifier = Modifier.fillMaxWidth(),
             color = colors.surface,
@@ -500,6 +517,30 @@ private fun ViewerScreen(
                 subjectTotals.forEach { (subject, durationMillis) ->
                     SubjectRow(subject = subject, durationMillis = durationMillis, colors = colors)
                 }
+            }
+        }
+
+        Text(
+            text = "세부 기록",
+            color = colors.text,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+
+        if (dailySessions.isEmpty()) {
+            Text(
+                modifier = Modifier.fillMaxWidth(),
+                text = "기록 없음",
+                color = colors.mutedText,
+                textAlign = TextAlign.Center
+            )
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                dailySessions
+                    .sortedBy { it.startMillis.takeIf { millis -> millis > 0L } ?: it.savedAtMillis }
+                    .forEach { session ->
+                        SessionDetailRow(session = session, colors = colors)
+                    }
             }
         }
 
@@ -734,6 +775,145 @@ private fun ColorSwatch(backgroundArgb: Int, textArgb: Int) {
 }
 
 @Composable
+private fun ReadOnlyDateCard(date: String, colors: AppColors) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = colors.surface,
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("측정 날짜", color = colors.mutedText, fontSize = 13.sp)
+            Text(date, color = colors.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+@Composable
+private fun MonthCalendar(
+    selectedDate: String,
+    sessions: List<StudySession>,
+    colors: AppColors,
+    onDateSelected: (String) -> Unit
+) {
+    val weeks = remember(selectedDate, sessions) {
+        buildMonthWeeks(selectedDate, sessions)
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = colors.surface,
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedButton(
+                    modifier = Modifier.size(38.dp),
+                    onClick = { onDateSelected(shiftMonth(selectedDate, -1)) },
+                    contentPadding = PaddingValues(0.dp),
+                    colors = outlineButtonColors(colors),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("<")
+                }
+                Text(
+                    text = formatMonthTitle(selectedDate),
+                    color = colors.text,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                OutlinedButton(
+                    modifier = Modifier.size(38.dp),
+                    onClick = { onDateSelected(shiftMonth(selectedDate, 1)) },
+                    contentPadding = PaddingValues(0.dp),
+                    colors = outlineButtonColors(colors),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(">")
+                }
+            }
+
+            Row(modifier = Modifier.fillMaxWidth()) {
+                listOf("일", "월", "화", "수", "목", "금", "토").forEach { label ->
+                    Text(
+                        modifier = Modifier.weight(1f),
+                        text = label,
+                        color = colors.mutedText,
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+
+            weeks.forEach { week ->
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    week.forEach { day ->
+                        CalendarDayCell(
+                            day = day,
+                            selected = day?.date == selectedDate,
+                            colors = colors,
+                            onDateSelected = onDateSelected
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RowScope.CalendarDayCell(
+    day: CalendarDay?,
+    selected: Boolean,
+    colors: AppColors,
+    onDateSelected: (String) -> Unit
+) {
+    val background = if (selected) colors.primaryButton else colors.background
+    val textColor = if (selected) colors.primaryButtonText else colors.text
+    val mutedColor = if (selected) colors.primaryButtonText else colors.mutedText
+    val modifier = if (day == null) {
+        Modifier
+    } else {
+        Modifier.clickable { onDateSelected(day.date) }
+    }
+
+    Box(
+        modifier = Modifier
+            .weight(1f)
+            .height(58.dp)
+            .padding(2.dp)
+            .then(modifier)
+            .background(background, RoundedCornerShape(7.dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        if (day != null) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(day.day.toString(), color = textColor, fontSize = 14.sp)
+                Text(
+                    text = if (day.totalMillis > 0L) formatCompactDuration(day.totalMillis) else "",
+                    color = mutedColor,
+                    fontSize = 10.sp,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun SubjectRow(subject: String, durationMillis: Long, colors: AppColors) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -758,6 +938,50 @@ private fun SubjectRow(subject: String, durationMillis: Long, colors: AppColors)
                 color = colors.mutedText,
                 fontSize = 16.sp,
                 textAlign = TextAlign.End
+            )
+        }
+    }
+}
+
+@Composable
+private fun SessionDetailRow(session: StudySession, colors: AppColors) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = colors.surface,
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    modifier = Modifier.weight(1f),
+                    text = session.subject,
+                    color = colors.text,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = formatDuration(session.durationMillis),
+                    color = colors.text,
+                    fontSize = 15.sp
+                )
+            }
+            Text(
+                text = "시작 ${formatClockTime(session.startMillis)} · 끝 ${formatClockTime(session.endMillis)}",
+                color = colors.mutedText,
+                fontSize = 13.sp
+            )
+            Text(
+                text = "쉰 시간 ${formatDuration(session.breakMillis)}",
+                color = colors.mutedText,
+                fontSize = 13.sp
             )
         }
     }
@@ -821,6 +1045,7 @@ private fun FullScreenClock(
     colors: AppColors,
     onExit: () -> Unit
 ) {
+    var clockScale by rememberSaveable { mutableStateOf(1f) }
     val elapsed = snapshot.elapsedMillis(nowElapsedMillis)
     val offsetStep = ((elapsed / 30000L) % 5L).toInt()
     val offsets = listOf(
@@ -834,6 +1059,11 @@ private fun FullScreenClock(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .pointerInput(Unit) {
+                detectTransformGestures { _, _, zoom, _ ->
+                    clockScale = (clockScale * zoom).coerceIn(0.55f, 2.4f)
+                }
+            }
             .background(colors.background)
     ) {
         Box(
@@ -849,7 +1079,7 @@ private fun FullScreenClock(
                 .offset { offsets[offsetStep] },
             text = formatDuration(elapsed),
             color = colors.text,
-            fontSize = 64.sp,
+            fontSize = (64f * clockScale).sp,
             fontWeight = FontWeight.ExtraLight,
             textAlign = TextAlign.Center
         )
@@ -930,6 +1160,109 @@ private fun darkTextFieldColors(colors: AppColors) = TextFieldDefaults.colors(
     unfocusedLabelColor = colors.mutedText,
     disabledLabelColor = colors.disabledText
 )
+
+private data class CalendarDay(
+    val date: String,
+    val day: Int,
+    val totalMillis: Long
+)
+
+private fun buildMonthWeeks(selectedDate: String, sessions: List<StudySession>): List<List<CalendarDay?>> {
+    val totalsByDate = sessions
+        .groupBy { it.date }
+        .mapValues { (_, values) -> values.sumOf { it.durationMillis } }
+    val calendar = parseDateCalendar(selectedDate).apply {
+        set(Calendar.DAY_OF_MONTH, 1)
+    }
+    val firstOffset = calendar.get(Calendar.DAY_OF_WEEK) - Calendar.SUNDAY
+    val daysInMonth = calendar.getActualMaximum(Calendar.DAY_OF_MONTH)
+    val weeks = mutableListOf<List<CalendarDay?>>()
+    var day = 1
+
+    repeat(6) { weekIndex ->
+        val week = mutableListOf<CalendarDay?>()
+        repeat(7) { dayIndex ->
+            val cellIndex = weekIndex * 7 + dayIndex
+            if (cellIndex >= firstOffset && day <= daysInMonth) {
+                calendar.set(Calendar.DAY_OF_MONTH, day)
+                val date = formatCalendarDate(calendar)
+                week.add(
+                    CalendarDay(
+                        date = date,
+                        day = day,
+                        totalMillis = totalsByDate[date] ?: 0L
+                    )
+                )
+                day += 1
+            } else {
+                week.add(null)
+            }
+        }
+        weeks.add(week)
+    }
+
+    return weeks
+}
+
+private fun shiftMonth(date: String, months: Int): String {
+    val calendar = parseDateCalendar(date).apply {
+        set(Calendar.DAY_OF_MONTH, 1)
+        add(Calendar.MONTH, months)
+    }
+    return formatCalendarDate(calendar)
+}
+
+private fun formatMonthTitle(date: String): String {
+    val calendar = parseDateCalendar(date)
+    return String.format(
+        Locale.US,
+        "%04d.%02d",
+        calendar.get(Calendar.YEAR),
+        calendar.get(Calendar.MONTH) + 1
+    )
+}
+
+private fun formatCalendarDate(calendar: Calendar): String {
+    return String.format(
+        Locale.US,
+        "%04d-%02d-%02d",
+        calendar.get(Calendar.YEAR),
+        calendar.get(Calendar.MONTH) + 1,
+        calendar.get(Calendar.DAY_OF_MONTH)
+    )
+}
+
+private fun parseDateCalendar(date: String): Calendar {
+    val calendar = Calendar.getInstance()
+    runCatching {
+        val parts = date.split("-").map { it.toInt() }
+        calendar.set(parts[0], parts[1] - 1, parts[2])
+    }
+    return calendar
+}
+
+private fun formatClockTime(millis: Long): String {
+    if (millis <= 0L) return "--:--"
+    return CLOCK_FORMAT.get()?.format(Date(millis)) ?: "--:--"
+}
+
+private fun formatCompactDuration(durationMillis: Long): String {
+    val totalMinutes = (durationMillis / 60000L).coerceAtLeast(0L)
+    val hours = totalMinutes / 60L
+    val minutes = totalMinutes % 60L
+    return when {
+        hours > 0L && minutes > 0L -> "${hours}h${minutes}m"
+        hours > 0L -> "${hours}h"
+        minutes > 0L -> "${minutes}m"
+        else -> "1m"
+    }
+}
+
+private val CLOCK_FORMAT = object : ThreadLocal<SimpleDateFormat>() {
+    override fun initialValue(): SimpleDateFormat {
+        return SimpleDateFormat("HH:mm", Locale.KOREA)
+    }
+}
 
 private fun showDatePickerDialog(
     context: Context,
