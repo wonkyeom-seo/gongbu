@@ -63,6 +63,11 @@ object ThemeSettingsStore {
         return settings
     }
 
+    fun saveSettings(context: Context, settings: ThemeSettings): ThemeSettings {
+        save(context, settings)
+        return settings
+    }
+
     fun saveCustom(context: Context, backgroundArgb: Int, textArgb: Int): ThemeSettings {
         val settings = ThemeSettings(
             presetId = CUSTOM_PRESET_ID,

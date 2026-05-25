@@ -4,14 +4,17 @@ import android.Manifest
 import android.app.Activity
 import android.app.DatePickerDialog
 import android.content.Context
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -127,7 +130,39 @@ private fun StudyApp() {
     var nowElapsedMillis by remember { mutableStateOf(SystemClock.elapsedRealtime()) }
     var themeSettings by remember { mutableStateOf(ThemeSettingsStore.read(context)) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
+    var backupMessage by rememberSaveable { mutableStateOf("") }
     val colors = themeSettings.toAppColors()
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        runCatching {
+            val json = AppBackupStore.exportJson(context, repository, themeSettings)
+            context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
+                writer.write(json)
+            } ?: error("파일을 열 수 없습니다")
+        }.onSuccess {
+            backupMessage = "내보내기 완료"
+        }.onFailure { throwable ->
+            backupMessage = "내보내기 실패: ${throwable.message ?: "알 수 없는 오류"}"
+        }
+    }
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        runCatching {
+            val json = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
+                reader.readText()
+            } ?: error("파일을 읽을 수 없습니다")
+            themeSettings = AppBackupStore.importJson(context, repository, json)
+            sessions = repository.readSessions()
+        }.onSuccess {
+            backupMessage = "가져오기 완료"
+        }.onFailure { throwable ->
+            backupMessage = "가져오기 실패: ${throwable.message ?: "잘못된 백업 파일"}"
+        }
+    }
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -182,6 +217,13 @@ private fun StudyApp() {
                     },
                     onCustomApply = { backgroundArgb, textArgb ->
                         themeSettings = ThemeSettingsStore.saveCustom(context, backgroundArgb, textArgb)
+                    },
+                    backupMessage = backupMessage,
+                    onExportData = {
+                        exportLauncher.launch("gongbu33-backup-${TimerStateStore.todayString()}.json")
+                    },
+                    onImportData = {
+                        importLauncher.launch(arrayOf("application/json", "text/*", "application/octet-stream"))
                     }
                 )
             } else {
@@ -592,7 +634,10 @@ private fun SettingsScreen(
     colors: AppColors,
     onBack: () -> Unit,
     onPresetSelected: (ThemePreset) -> Unit,
-    onCustomApply: (Int, Int) -> Unit
+    onCustomApply: (Int, Int) -> Unit,
+    backupMessage: String,
+    onExportData: () -> Unit,
+    onImportData: () -> Unit
 ) {
     var backgroundHex by rememberSaveable(settings.backgroundArgb) {
         mutableStateOf(ThemeSettingsStore.toHexColor(settings.backgroundArgb))
@@ -713,6 +758,49 @@ private fun SettingsScreen(
                 Text("00:25:10", color = colors.text, fontSize = 34.sp, fontWeight = FontWeight.Light)
                 Text("측정 중 · 국어", color = colors.mutedText, fontSize = 14.sp)
             }
+        }
+
+        Text("저장데이터", color = colors.mutedText, fontSize = 13.sp)
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Button(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(50.dp),
+                onClick = onExportData,
+                colors = primaryButtonColors(colors),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("내보내기", fontWeight = FontWeight.SemiBold)
+            }
+
+            Button(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(50.dp),
+                onClick = onImportData,
+                colors = secondaryButtonColors(colors),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("가져오기", fontWeight = FontWeight.SemiBold)
+            }
+        }
+
+        Text(
+            text = "가져오기는 현재 저장된 공부 기록과 색상 설정을 백업 파일 내용으로 교체합니다.",
+            color = colors.mutedText,
+            fontSize = 12.sp
+        )
+
+        if (backupMessage.isNotBlank()) {
+            Text(
+                text = backupMessage,
+                color = colors.text,
+                fontSize = 13.sp
+            )
         }
     }
 }

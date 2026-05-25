@@ -85,20 +85,14 @@ class StudySessionRepository(context: Context) {
         }
     }
 
+    fun replaceAll(sessions: List<StudySession>) = synchronized(lock) {
+        writeSessions(sessions)
+    }
+
     private fun writeSessions(sessions: List<StudySession>) {
         val array = JSONArray()
         sessions.forEach { session ->
-            array.put(
-                JSONObject()
-                    .put("id", session.id)
-                    .put("date", session.date)
-                    .put("subject", session.subject)
-                    .put("durationMillis", session.durationMillis)
-                    .put("startMillis", session.startMillis)
-                    .put("endMillis", session.endMillis)
-                    .put("breakMillis", session.breakMillis)
-                    .put("savedAtMillis", session.savedAtMillis)
-            )
+            array.put(session.toJson())
         }
         file.writeText(array.toString(2))
     }
@@ -106,5 +100,38 @@ class StudySessionRepository(context: Context) {
     companion object {
         private const val FILE_NAME = "study_sessions.json"
         private val lock = Any()
+
+        fun fromJson(item: JSONObject): StudySession {
+            val durationMillis = item.optLong("durationMillis")
+            val savedAtMillis = item.optLong("savedAtMillis")
+            val fallbackEndMillis = savedAtMillis.takeIf { it > 0L } ?: 0L
+            val endMillis = item.optLong("endMillis", fallbackEndMillis)
+            val startMillis = item.optLong(
+                "startMillis",
+                (endMillis - durationMillis).coerceAtLeast(0L)
+            )
+            return StudySession(
+                id = item.optString("id").ifBlank { UUID.randomUUID().toString() },
+                date = item.optString("date"),
+                subject = item.optString("subject"),
+                durationMillis = durationMillis,
+                startMillis = startMillis,
+                endMillis = endMillis,
+                breakMillis = item.optLong("breakMillis", 0L),
+                savedAtMillis = savedAtMillis
+            )
+        }
     }
+}
+
+fun StudySession.toJson(): JSONObject {
+    return JSONObject()
+        .put("id", id)
+        .put("date", date)
+        .put("subject", subject)
+        .put("durationMillis", durationMillis)
+        .put("startMillis", startMillis)
+        .put("endMillis", endMillis)
+        .put("breakMillis", breakMillis)
+        .put("savedAtMillis", savedAtMillis)
 }
